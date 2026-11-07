@@ -118,7 +118,7 @@ func (d *decoder) decodeItem(depth int) (Value, error) {
 
 	case MajorBytes:
 		if ai == 31 {
-			return Value{}, errors.New("cborwire: indefinite byte string not supported in this stage")
+			return d.decodeIndefBytes(depth)
 		}
 		n, err := d.readArgument(ai)
 		if err != nil {
@@ -135,7 +135,7 @@ func (d *decoder) decodeItem(depth int) (Value, error) {
 
 	case MajorText:
 		if ai == 31 {
-			return Value{}, errors.New("cborwire: indefinite text string not supported in this stage")
+			return d.decodeIndefText(depth)
 		}
 		n, err := d.readArgument(ai)
 		if err != nil {
@@ -155,7 +155,7 @@ func (d *decoder) decodeItem(depth int) (Value, error) {
 
 	case MajorArray:
 		if ai == 31 {
-			return Value{}, errors.New("cborwire: indefinite array not supported in this stage")
+			return d.decodeIndefArray(depth)
 		}
 		n, err := d.readArgument(ai)
 		if err != nil {
@@ -176,7 +176,7 @@ func (d *decoder) decodeItem(depth int) (Value, error) {
 
 	case MajorMap:
 		if ai == 31 {
-			return Value{}, errors.New("cborwire: indefinite map not supported in this stage")
+			return d.decodeIndefMap(depth)
 		}
 		n, err := d.readArgument(ai)
 		if err != nil {
@@ -331,14 +331,135 @@ func decodeRune(p []byte) (rune, int) {
 	return decodeRuneImpl(p)
 }
 
-// expandTag is a stub in stage 1; tags 0-3 fully handled in stage 2.
-func expandTag(num uint64, inner Value) (Value, bool) {
-	_ = num
-	_ = inner
-	return Value{}, false
+
+func (d *decoder) peekBreak() (bool, error) {
+	if d.off >= len(d.buf) {
+		return false, io.ErrUnexpectedEOF
+	}
+	return d.buf[d.off] == 0xff, nil
 }
 
-// float16ToFloat32 is a stub; full half-float in stage 2.
+func (d *decoder) consumeBreak() error {
+	b, err := d.readByte()
+	if err != nil {
+		return err
+	}
+	if b != 0xff {
+		return errors.New("cborwire: expected break")
+	}
+	return nil
+}
+
+func (d *decoder) decodeIndefBytes(depth int) (Value, error) {
+	var out []byte
+	for {
+		br, err := d.peekBreak()
+		if err != nil {
+			return Value{}, err
+		}
+		if br {
+			_ = d.consumeBreak()
+			return Bytes(out), nil
+		}
+		ib, err := d.readByte()
+		if err != nil {
+			return Value{}, err
+		}
+		mt := MajorType(ib >> 5)
+		ai := ib & 0x1f
+		if mt != MajorBytes || ai == 31 {
+			return Value{}, errors.New("cborwire: indefinite bytes chunk must be definite bytes")
+		}
+		n, err := d.readArgument(ai)
+		if err != nil {
+			return Value{}, err
+		}
+		b, err := d.readN(int(n))
+		if err != nil {
+			return Value{}, err
+		}
+		out = append(out, b...)
+	}
+}
+
+func (d *decoder) decodeIndefText(depth int) (Value, error) {
+	var out []byte
+	for {
+		br, err := d.peekBreak()
+		if err != nil {
+			return Value{}, err
+		}
+		if br {
+			_ = d.consumeBreak()
+			if !validUTF8(out) {
+				return Value{}, errors.New("cborwire: indefinite text is not valid UTF-8")
+			}
+			return Text(string(out)), nil
+		}
+		ib, err := d.readByte()
+		if err != nil {
+			return Value{}, err
+		}
+		mt := MajorType(ib >> 5)
+		ai := ib & 0x1f
+		if mt != MajorText || ai == 31 {
+			return Value{}, errors.New("cborwire: indefinite text chunk must be definite text")
+		}
+		n, err := d.readArgument(ai)
+		if err != nil {
+			return Value{}, err
+		}
+		b, err := d.readN(int(n))
+		if err != nil {
+			return Value{}, err
+		}
+		out = append(out, b...)
+	}
+}
+
+func (d *decoder) decodeIndefArray(depth int) (Value, error) {
+	var arr []Value
+	for {
+		br, err := d.peekBreak()
+		if err != nil {
+			return Value{}, err
+		}
+		if br {
+			_ = d.consumeBreak()
+			return Array(arr...), nil
+		}
+		v, err := d.decodeItem(depth + 1)
+		if err != nil {
+			return Value{}, err
+		}
+		arr = append(arr, v)
+	}
+}
+
+func (d *decoder) decodeIndefMap(depth int) (Value, error) {
+	var pairs []Pair
+	for {
+		br, err := d.peekBreak()
+		if err != nil {
+			return Value{}, err
+		}
+		if br {
+			_ = d.consumeBreak()
+			return MapOf(pairs...), nil
+		}
+		k, err := d.decodeItem(depth + 1)
+		if err != nil {
+			return Value{}, err
+		}
+		v, err := d.decodeItem(depth + 1)
+		if err != nil {
+			return Value{}, err
+		}
+		pairs = append(pairs, Pair{Key: k, Value: v})
+	}
+}
+
+// float16ToFloat32 converts IEEE 754 binary16 bits to binary32 bits.
 func float16ToFloat32(u uint16) uint32 {
 	// IEEE 754 half → single (correct conversion for stage-1 float tests that use 0/inf/nan carefully).
 	sign := uint32(u&0x8000) << 16

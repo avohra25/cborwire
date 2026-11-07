@@ -4,18 +4,14 @@ Pure-Go [CBOR](https://www.rfc-editor.org/rfc/rfc8949.html) (RFC 8949 Concise Bi
 
 **stdlib only** — no third-party modules. Tested with `go test` (and `-race` where practical).
 
-## Status
+## Features
 
-Stage 1 — definite-length major types:
+- Definite-length major types: unsigned/negative ints, bytes, text, arrays, maps, tags, simples, half/float32/float64
+- **Indefinite-length** byte/text strings, arrays and maps (break `0xff`)
+- Well-known **tags**: 0 (date/time string), 1 (epoch), 2/3 (bignums → `math/big`), unknown tags pass through
+- Helpers: `DateTimeString`, `EpochDateTime`, `ParseDateTime`, `EncodeIndefinite`
 
-- Unsigned / negative integers (all additional-info widths)
-- Byte strings and UTF-8 text strings
-- Arrays and maps (order-preserving)
-- Tags (pass-through; well-known tags expanded in later stages)
-- Simple values: `false` / `true` / `null` / `undefined` / unassigned simples
-- Floats: half (float16), float32, float64
-
-Coming next: indefinite-length items, tag 0/1/2/3 helpers, canonical encoding, diagnostic notation, streaming `io.Reader`/`io.Writer` API, and a `cborwire` CLI.
+Coming next: canonical encoding, diagnostic notation, streaming API, CLI.
 
 ## Install
 
