@@ -26,7 +26,13 @@ func Encode(v Value) ([]byte, error) {
 func EncodeWith(v Value, opt EncodeOptions) ([]byte, error) {
 	var buf []byte
 	w := &byteWriter{buf: &buf}
-	if err := encodeValue(w, v, opt); err != nil {
+	var err error
+	if opt.Canonical {
+		err = encodeValueCanonical(w, v, opt)
+	} else {
+		err = encodeValue(w, v, opt)
+	}
+	if err != nil {
 		return nil, err
 	}
 	return buf, nil

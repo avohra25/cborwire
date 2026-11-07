@@ -6,12 +6,13 @@ Pure-Go [CBOR](https://www.rfc-editor.org/rfc/rfc8949.html) (RFC 8949 Concise Bi
 
 ## Features
 
-- Definite-length major types: unsigned/negative ints, bytes, text, arrays, maps, tags, simples, half/float32/float64
-- **Indefinite-length** byte/text strings, arrays and maps (break `0xff`)
-- Well-known **tags**: 0 (date/time string), 1 (epoch), 2/3 (bignums → `math/big`), unknown tags pass through
-- Helpers: `DateTimeString`, `EpochDateTime`, `ParseDateTime`, `EncodeIndefinite`
+- Definite- and **indefinite-length** major types (break `0xff`)
+- Well-known **tags** 0/1/2/3 (date/time, bignums) with unknown-tag pass-through
+- **Canonical / deterministic** encoding (shortest lengths, preferred floats, sorted map keys)
+- **Diagnostic notation** (`Diagnose` / `DiagnoseBytes`) per RFC 8949 §8
+- **Streaming** `Decoder` over `io.Reader` and `Encoder` to `io.Writer`
 
-Coming next: canonical encoding, diagnostic notation, streaming API, CLI.
+Coming next: `cborwire` CLI (`decode` / `encode` / `diagnose` / `validate`) and examples.
 
 ## Install
 
@@ -30,22 +31,12 @@ import (
 )
 
 func main() {
-    v := cborwire.Array(
-        cborwire.Uint(1),
-        cborwire.Text("hi"),
-        cborwire.Bool(true),
+    v := cborwire.MapOf(
+        cborwire.Pair{Key: cborwire.Text("b"), Value: cborwire.Uint(2)},
+        cborwire.Pair{Key: cborwire.Text("a"), Value: cborwire.Uint(1)},
     )
-    b, err := cborwire.Encode(v)
-    if err != nil {
-        panic(err)
-    }
-    fmt.Printf("%x\n", b) // 8301626869f5
-
-    out, err := cborwire.Decode(b)
-    if err != nil {
-        panic(err)
-    }
-    fmt.Println(out.Array[1].Text) // hi
+    b, _ := cborwire.CanonicalEncode(v)
+    fmt.Println(cborwire.DiagnoseBytes(b)) // { "a": 1, "b": 2 } (keys sorted)
 }
 ```
 
