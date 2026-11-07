@@ -2,25 +2,28 @@
 
 Pure-Go [CBOR](https://www.rfc-editor.org/rfc/rfc8949.html) (RFC 8949 Concise Binary Object Representation) codec toolkit.
 
-**stdlib only** — no third-party modules. Tested with `go test` (and `-race` where practical).
+**stdlib only** — no third-party modules. Tested with `go test`, `go test -race`, and `go test -fuzz`.
 
 ## Features
 
-- Definite- and **indefinite-length** major types (break `0xff`)
-- Well-known **tags** 0/1/2/3 (date/time, bignums) with unknown-tag pass-through
-- **Canonical / deterministic** encoding (shortest lengths, preferred floats, sorted map keys)
-- **Diagnostic notation** (`Diagnose` / `DiagnoseBytes`) per RFC 8949 §8
-- **Streaming** `Decoder` over `io.Reader` and `Encoder` to `io.Writer`
-
-Coming next: `cborwire` CLI (`decode` / `encode` / `diagnose` / `validate`) and examples.
+| Area | Support |
+|------|---------|
+| Major types | Unsigned / negative ints, byte & text strings, arrays, maps, tags, simples, half / float32 / float64 |
+| Indefinite length | Arrays, maps, bytes, text with break `0xff` (`EncodeIndefinite` + decode) |
+| Tags | 0 (date/time string), 1 (epoch), 2/3 (bignums → `math/big`); unknown tags pass through |
+| Canonical | Shortest lengths, preferred floats, map keys sorted by encoded bytes (`CanonicalEncode`) |
+| Diagnostic | RFC 8949 §8 notation via `Diagnose` / `DiagnoseBytes` |
+| Streaming | `NewDecoder(io.Reader)` / `NewEncoder(io.Writer)` |
+| CLI | `decode` · `encode` · `diagnose` · `validate` |
 
 ## Install
 
 ```bash
 go get github.com/avohra25/cborwire@latest
+go install github.com/avohra25/cborwire/cmd/cborwire@latest
 ```
 
-## Quick start
+## Library quick start
 
 ```go
 package main
@@ -31,13 +34,57 @@ import (
 )
 
 func main() {
-    v := cborwire.MapOf(
+    v := cborwire.Array(
+        cborwire.Uint(1),
+        cborwire.Text("hi"),
+        cborwire.Bool(true),
+    )
+    b, err := cborwire.Encode(v)
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("%x\n", b)                 // 8301626869f5
+    fmt.Println(cborwire.Diagnose(v))     // [1, "hi", true]
+
+    canon, _ := cborwire.CanonicalEncode(cborwire.MapOf(
         cborwire.Pair{Key: cborwire.Text("b"), Value: cborwire.Uint(2)},
         cborwire.Pair{Key: cborwire.Text("a"), Value: cborwire.Uint(1)},
-    )
-    b, _ := cborwire.CanonicalEncode(v)
-    fmt.Println(cborwire.DiagnoseBytes(b)) // { "a": 1, "b": 2 } (keys sorted)
+    ))
+    fmt.Println(cborwire.MustDiagnose(canon)) // {"a": 1, "b": 2}
 }
+```
+
+## CLI
+
+```bash
+# Hex → diagnostic notation
+cborwire diagnose 8301626869f5
+# → [1, "hi", true]
+
+# Hex → JSON-ish
+cborwire decode -out json 8301626869f5
+
+# JSON → CBOR hex (canonical)
+cborwire encode -canonical '{"a":1,"b":2}'
+
+# Validate
+cborwire validate -format hex 9f010203ff
+```
+
+Input may be a CLI argument, `-file path`, or stdin. Use `-format hex|base64|raw`.
+
+## Examples
+
+```bash
+go run examples/basic.go
+```
+
+## Tests
+
+```bash
+go test ./...
+go test -race ./...
+go test -fuzz=FuzzDecodeEncode -fuzztime=10s
 ```
 
 ## License

@@ -132,3 +132,12 @@ func DiagnoseBytes(b []byte) (string, error) {
 	}
 	return Diagnose(v), nil
 }
+
+// MustDiagnose is DiagnoseBytes that panics on error.
+func MustDiagnose(b []byte) string {
+	s, err := DiagnoseBytes(b)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
